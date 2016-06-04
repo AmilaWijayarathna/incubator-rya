@@ -32,6 +32,7 @@ import static mvm.rya.api.RdfCloudTripleStoreConstants.RTS_SUBJECT_RYA;
 import static mvm.rya.api.RdfCloudTripleStoreConstants.RTS_VERSION_PREDICATE_RYA;
 import static mvm.rya.api.RdfCloudTripleStoreConstants.VERSION_RYA;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -55,7 +56,6 @@ import org.apache.accumulo.core.data.Mutation;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.Value;
 import org.apache.accumulo.core.security.Authorizations;
-import org.apache.accumulo.core.security.ColumnVisibility;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.io.Text;
@@ -152,7 +152,9 @@ public class AccumuloRyaDAO implements RyaDAO<AccumuloRdfConfiguration>, RyaName
             bw_ns = mt_bw.getBatchWriter(tableLayoutStrategy.getNs());
             
             for (AccumuloIndexer index : secondaryIndexers) {
-                index.setMultiTableBatchWriter(mt_bw);
+               index.setConnector(connector);
+               index.setMultiTableBatchWriter(mt_bw);
+               index.init();
             }
 
             queryEngine = new AccumuloRyaQueryEngine(connector, conf);
@@ -253,26 +255,11 @@ public class AccumuloRyaDAO implements RyaDAO<AccumuloRdfConfiguration>, RyaName
 
     }
 
-    protected void deleteSingleRyaStatement(RyaStatement stmt) throws TripleRowResolverException, MutationsRejectedException {
-        Map<TABLE_LAYOUT, TripleRow> map = ryaContext.serializeTriple(stmt);
-        bw_spo.addMutation(deleteMutation(map.get(TABLE_LAYOUT.SPO)));
-        bw_po.addMutation(deleteMutation(map.get(TABLE_LAYOUT.PO)));
-        bw_osp.addMutation(deleteMutation(map.get(TABLE_LAYOUT.OSP)));
-
-    }
-
-    protected Mutation deleteMutation(TripleRow tripleRow) {
-        Mutation m = new Mutation(new Text(tripleRow.getRow()));
-
-        byte[] columnFamily = tripleRow.getColumnFamily();
-        Text cfText = columnFamily == null ? EMPTY_TEXT : new Text(columnFamily);
-
-        byte[] columnQualifier = tripleRow.getColumnQualifier();
-        Text cqText = columnQualifier == null ? EMPTY_TEXT : new Text(columnQualifier);
-
-        m.putDelete(cfText, cqText, new ColumnVisibility(tripleRow.getColumnVisibility()),
-                    tripleRow.getTimestamp());
-        return m;
+    protected void deleteSingleRyaStatement(RyaStatement stmt) throws IOException, MutationsRejectedException {
+        Map<TABLE_LAYOUT, Collection<Mutation>> map = ryaTableMutationsFactory.serializeDelete(stmt);
+        bw_spo.addMutations(map.get(TABLE_LAYOUT.SPO));
+        bw_po.addMutations(map.get(TABLE_LAYOUT.PO));
+        bw_osp.addMutations(map.get(TABLE_LAYOUT.OSP));
     }
 
     protected void commit(Iterator<RyaStatement> commitStatements) throws RyaDAOException {
@@ -313,6 +300,13 @@ public class AccumuloRyaDAO implements RyaDAO<AccumuloRdfConfiguration>, RyaName
             mt_bw.close();
         } catch (Exception e) {
             throw new RyaDAOException(e);
+        }
+        for(AccumuloIndexer indexer : this.secondaryIndexers) {
+            try {
+                indexer.destroy();
+            } catch(Exception e) {
+                logger.warn("Failed to destroy indexer", e);
+            }
         }
     }
 
@@ -390,6 +384,13 @@ public class AccumuloRyaDAO implements RyaDAO<AccumuloRdfConfiguration>, RyaName
                 logger.error(e.getMessage());
             }
         }
+        for(AccumuloIndexer indexer : this.secondaryIndexers) {
+            try {
+                indexer.purge(configuration);
+            } catch(Exception e) {
+                logger.error("Failed to purge indexer", e);
+            }
+        }
     }
 
     @Override
@@ -408,6 +409,13 @@ public class AccumuloRyaDAO implements RyaDAO<AccumuloRdfConfiguration>, RyaName
             }
         }
         destroy();
+        for(AccumuloIndexer indexer : this.secondaryIndexers) {
+            try {
+                indexer.dropAndDestroy();
+            } catch(Exception e) {
+                logger.error("Failed to drop and destroy indexer", e);
+            }
+        }
     }
 
     public Connector getConnector() {

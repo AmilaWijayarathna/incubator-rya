@@ -19,7 +19,7 @@ under the License. -->
 
 ## Overview
 
-RYA is a scalable RDF Store that is built on top of a Columnar Index Store (such as Accumulo). It is implemented as an extension to OpenRdf to provide easy query mechanisms (SPARQL, SERQL, etc) and Rdf data storage (RDF/XML, NTriples, etc).
+[RYA] is a scalable RDF Store that is built on top of a Columnar Index Store (such as Accumulo). It is implemented as an extension to OpenRdf to provide easy query mechanisms (SPARQL, SERQL, etc) and Rdf data storage (RDF/XML, NTriples, etc).
 
 RYA stands for RDF y(and) Accumulo.
 
@@ -38,6 +38,10 @@ Since the data encodings changed in the 3.2.2 release, you will need to run the 
 ```
 hadoop jar accumulo.rya-mr.jar mvm.rya.accumulo.mr.upgrade.Upgrade322Tool -Dac.instance={} -Dac.username={} -Dac.pwd={}
 ```
+
+## Quick Start VM
+
+A quickstart Vagrant VM is availible [here](extras/vagrantExample/src/main/vagrant)
 
 ## Quick Start
 
@@ -315,3 +319,7 @@ tupleQuery.evaluate(new TupleQueryResultHandler() {
 conn.close();
 myRepository.shutDown();
 ```
+
+
+[RYA]: http://rya.incubator.apache.org/ 
+
